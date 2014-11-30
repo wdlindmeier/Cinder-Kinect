@@ -50,8 +50,6 @@ class PointCloudGl : public AppBasic {
 	// KINECT AND TEXTURES
 	KinectRef		mKinect;
 	gl::TextureRef	mDepthTexture;
-	float			mScale;
-	float			mXOff, mYOff;
 	
 	// BATCH AND SHADER
 	gl::GlslProgRef	mShader;
