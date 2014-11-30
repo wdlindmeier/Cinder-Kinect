@@ -1,4 +1,5 @@
 #include "cinder/app/AppBasic.h"
+#include "cinder/app/RendererGl.h"
 #include "cinder/gl/gl.h"
 #include "cinder/gl/Texture.h"
 #include "cinder/Surface.h"
@@ -13,8 +14,11 @@ using namespace ci::app;
 using namespace std;
 
 
-class kinectBasicApp : public AppBasic {
+class kinectBasicApp : public AppBasic
+{
+    
   public:
+    
 	void prepareSettings( Settings* settings );
 	void setup();
 	void mouseUp( MouseEvent event );
@@ -22,7 +26,8 @@ class kinectBasicApp : public AppBasic {
 	void draw();
 	
 	KinectRef		mKinect;
-	gl::Texture		mColorTexture, mDepthTexture;	
+	gl::TextureRef  mColorTexture, mDepthTexture;
+    
 };
 
 void kinectBasicApp::prepareSettings( Settings* settings )
@@ -55,10 +60,10 @@ void kinectBasicApp::mouseUp( MouseEvent event )
 void kinectBasicApp::update()
 {	
 	if( mKinect->checkNewDepthFrame() )
-		mDepthTexture = mKinect->getDepthImage();
+        mDepthTexture = gl::Texture::create( mKinect->getDepthImage() );
 	
 	if( mKinect->checkNewVideoFrame() )
-		mColorTexture = mKinect->getVideoImage();
+		mColorTexture = gl::Texture::create( mKinect->getVideoImage() );
 	
 //	console() << "Accel: " << mKinect.getAccel() << std::endl;
 }
@@ -70,7 +75,7 @@ void kinectBasicApp::draw()
 	if( mDepthTexture )
 		gl::draw( mDepthTexture );
 	if( mColorTexture )
-		gl::draw( mColorTexture, Vec2i( 640, 0 ) );
+		gl::draw( mColorTexture, ivec2( 640, 0 ) );
 }
 
 

@@ -1,4 +1,5 @@
 #include "cinder/app/AppBasic.h"
+#include "cinder/app/RendererGl.h"
 #include "cinder/gl/GlslProg.h"
 #include "cinder/gl/Vbo.h"
 #include "cinder/gl/Texture.h"
@@ -6,6 +7,7 @@
 #include "cinder/Camera.h"
 #include "cinder/params/Params.h"
 #include "cinder/Utilities.h"
+#include "cinder/gl/Batch.h"
 #include "cinder/ImageIo.h"
 #include "CinderFreenect.h"
 #include "Resources.h"
@@ -17,33 +19,41 @@ using namespace ci;
 using namespace ci::app;
 using namespace std;
 
+struct Particle
+{
+    vec3		pos;
+    vec2		texCoord;
+};
+
 class PointCloudGl : public AppBasic {
   public:
 	void prepareSettings( Settings* settings );
 	void setup();
-	void createVbo();
+	void createBatch();
 	void update();
 	void draw();
 	
 	// PARAMS
 	params::InterfaceGlRef	mParams;
+    float           mPointSize;
 	
 	// CAMERA
 	CameraPersp		mCam;
-	Quatf			mSceneRotation;
-	Vec3f			mEye, mCenter, mUp;
+	quat			mSceneRotation;
+	vec3			mEye, mCenter, mUp;
 	float			mCameraDistance;
 	float			mKinectTilt;
 	
 	// KINECT AND TEXTURES
 	KinectRef		mKinect;
-	gl::Texture		mDepthTexture;
+	gl::TextureRef	mDepthTexture;
 	float			mScale;
 	float			mXOff, mYOff;
 	
-	// VBO AND SHADER
-	gl::VboMesh		mVboMesh;
-	gl::GlslProg	mShader;
+	// BATCH AND SHADER
+	gl::GlslProgRef	mShader;
+    gl::BatchRef	mParticleBatch;
+
 };
 
 void PointCloudGl::prepareSettings( Settings* settings )
@@ -54,74 +64,78 @@ void PointCloudGl::prepareSettings( Settings* settings )
 void PointCloudGl::setup()
 {	
 	// SETUP PARAMS
-	mParams = params::InterfaceGl::create( "KinectPointCloud", Vec2i( 200, 180 ) );
+	mParams = params::InterfaceGl::create( "KinectPointCloud", ivec2( 200, 180 ) );
 	mParams->addParam( "Scene Rotation", &mSceneRotation, "opened=1" );
 	mParams->addParam( "Cam Distance", &mCameraDistance, "min=100.0 max=5000.0 step=100.0 keyIncr=s keyDecr=w" );
 	mParams->addParam( "Kinect Tilt", &mKinectTilt, "min=-31 max=31 keyIncr=T keyDecr=t" );
+    mParams->addParam( "Point Size", &mPointSize, "min=1.0 max=20.0 keyIncr=P keyDecr=p step=0.5" );
 	
+    mPointSize = 1.f;
+    
 	// SETUP CAMERA
 	mCameraDistance = 1000.0f;
-	mEye			= Vec3f( 0.0f, 0.0f, mCameraDistance );
-	mCenter			= Vec3f::zero();
-	mUp				= Vec3f::yAxis();
+	mEye			= vec3( 0.0f, 0.0f, mCameraDistance );
+	mCenter			= vec3(0);
+	mUp				= vec3(0,1,0);
 	mCam.setPerspective( 75.0f, getWindowAspectRatio(), 1.0f, 8000.0f );
 	
 	// SETUP KINECT AND TEXTURES
 	mKinect			= Kinect::create(); // use the default Kinect
-	mDepthTexture	= gl::Texture( 640, 480 );
+    mDepthTexture	= gl::Texture::create( 640, 480 );
 	
-	// SETUP VBO AND SHADER	
-	createVbo();
-	mShader	= gl::GlslProg( loadAsset( "MainVert.glsl" ), loadAsset( "MainFrag.glsl" ) );
-	
+	// SETUP BATCH AND SHADER
+    mShader	= gl::GlslProg::create( loadAsset( "mainVert.glsl" ), loadAsset( "mainFrag.glsl" ) );
+    createBatch();
+
 	// SETUP GL
 	gl::enableDepthWrite();
 	gl::enableDepthRead();
+    gl::enable( GL_VERTEX_PROGRAM_POINT_SIZE );
 }
 
-void PointCloudGl::createVbo()
+void PointCloudGl::createBatch()
 {
-	gl::VboMesh::Layout layout;
-	
-	layout.setStaticPositions();
-	layout.setStaticTexCoords2d();
-	layout.setStaticIndices();
-	
-	std::vector<Vec3f> positions;
-	std::vector<Vec2f> texCoords;
-	std::vector<uint32_t> indices; 
-	
-	int numVertices = VBO_X_RES * VBO_Y_RES;
-	int numShapes	= ( VBO_X_RES - 1 ) * ( VBO_Y_RES - 1 );
-
-	mVboMesh		= gl::VboMesh( numVertices, numShapes, layout, GL_POINTS );
-	
-	for( int x=0; x<VBO_X_RES; ++x ){
-		for( int y=0; y<VBO_Y_RES; ++y ){
-			indices.push_back( x * VBO_Y_RES + y );
-
+    // Create initial particle layout.
+    vector<Particle> particles;
+    for( int x = 0; x < VBO_X_RES; ++x )
+    {
+        for( int y = 0; y < VBO_Y_RES; ++y )
+        {
 			float xPer	= x / (float)(VBO_X_RES-1);
 			float yPer	= y / (float)(VBO_Y_RES-1);
-			
-			positions.push_back( Vec3f( ( xPer * 2.0f - 1.0f ) * VBO_X_RES, ( yPer * 2.0f - 1.0f ) * VBO_Y_RES, 0.0f ) );
-			texCoords.push_back( Vec2f( xPer, yPer ) );			
-		}
-	}
-	
-	mVboMesh.bufferPositions( positions );
-	mVboMesh.bufferIndices( indices );
-	mVboMesh.bufferTexCoords2d( 0, texCoords );
+            Particle p;
+			p.pos = vec3( ( xPer * 2.0f - 1.0f ) * VBO_X_RES, ( yPer * 2.0f - 1.0f ) * VBO_Y_RES, 0.0f );
+			p.texCoord = vec2( xPer, 1.0-yPer );
+            particles.push_back(p);
+        }
+    }
+    
+    // Create particle buffer on GPU and copy over data.
+    // Mark as streaming, since we will copy new data every frame.
+    gl::VboRef particleVbo = gl::Vbo::create( GL_ARRAY_BUFFER, particles, GL_STREAM_DRAW );
+    
+    // Describe particle semantics for GPU.
+    geom::BufferLayout particleLayout;
+    particleLayout.append( geom::Attrib::POSITION, 3, sizeof( Particle ), offsetof( Particle, pos ) );
+    particleLayout.append( geom::Attrib::TEX_COORD_0, 2, sizeof( Particle ), offsetof( Particle, texCoord ) );
+    
+    assert( mShader );
+    
+    // Create mesh by pairing our particle layout with our particle Vbo.
+    // A VboMesh is an array of layout + vbo pairs
+    auto mesh = gl::VboMesh::create( particles.size(), GL_POINTS, { { particleLayout, particleVbo } } );
+    mParticleBatch = gl::Batch::create( mesh, mShader );
 }
 
 void PointCloudGl::update()
 {
 	if( mKinect->checkNewDepthFrame() )
-		mDepthTexture = mKinect->getDepthImage();
+        mDepthTexture = gl::Texture::create( mKinect->getDepthImage() );
 	
 	if( mKinectTilt != mKinect->getTilt() )
 		mKinect->setTilt( mKinectTilt );
 		
-	mEye = Vec3f( 0.0f, 0.0f, mCameraDistance );
+	mEye = vec3( 0.0f, 0.0f, mCameraDistance );
 	mCam.lookAt( mEye, mCenter, mUp );
 	gl::setMatrices( mCam );
 }
@@ -130,17 +144,17 @@ void PointCloudGl::draw()
 {
 	gl::clear( Color( 0.0f, 0.0f, 0.0f ), true );
 	
-	gl::pushMatrices();
-		gl::scale( Vec3f( -1.0f, -1.0f, 1.0f ) );
+    {
+        gl::ScopedMatrices matRotation;
+		gl::scale( vec3( -1.0f, -1.0f, 1.0f ) );
 		gl::rotate( mSceneRotation );
-		mDepthTexture.bind( 0 );
-		mShader.bind();
-		mShader.uniform( "depthTex", 0 );
-		gl::draw( mVboMesh );
-		mShader.unbind();
-	gl::popMatrices();
-	
-	mParams->draw();
+		mDepthTexture->bind( 0 );
+        mShader->uniform( "uDepthTex", 0 );
+        mShader->uniform( "uPointSize", mPointSize );
+        mParticleBatch->draw();
+    }
+
+    mParams->draw();
 }
 
 

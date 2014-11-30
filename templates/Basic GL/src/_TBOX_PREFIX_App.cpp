@@ -1,4 +1,5 @@
 #include "cinder/app/AppBasic.h"
+#include "cinder/app/RendererGl.h"
 #include "cinder/gl/gl.h"
 #include "cinder/gl/Texture.h"
 
@@ -16,7 +17,7 @@ class _TBOX_PREFIX_App : public AppBasic {
 	void draw();
 	
 	KinectRef		mKinect;
-	gl::Texture		mColorTexture, mDepthTexture;	
+	gl::TextureRef	mColorTexture, mDepthTexture;
 };
 
 void _TBOX_PREFIX_App::prepareSettings( Settings* settings )
@@ -32,10 +33,10 @@ void _TBOX_PREFIX_App::setup()
 void _TBOX_PREFIX_App::update()
 {	
 	if( mKinect->checkNewDepthFrame() )
-		mDepthTexture = mKinect->getDepthImage();
+		mDepthTexture = gl::Texture::create(mKinect->getDepthImage());
 	
 	if( mKinect->checkNewVideoFrame() )
-		mColorTexture = mKinect->getVideoImage();
+		mColorTexture = gl::Texture::create(mKinect->getVideoImage());
 }
 
 void _TBOX_PREFIX_App::draw()
@@ -45,7 +46,7 @@ void _TBOX_PREFIX_App::draw()
 	if( mDepthTexture )
 		gl::draw( mDepthTexture );
 	if( mColorTexture )
-		gl::draw( mColorTexture, Vec2i( 640, 0 ) );
+		gl::draw( mColorTexture, ivec2( 640, 0 ) );
 }
 
 CINDER_APP_BASIC( _TBOX_PREFIX_App, RendererGl )
