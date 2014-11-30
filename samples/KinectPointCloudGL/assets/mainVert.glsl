@@ -3,6 +3,7 @@
 uniform sampler2D uDepthTex;
 uniform mat4 ciModelViewProjection;
 uniform float uPointSize;
+uniform float uDepthMag;
 
 in vec4 ciPosition;
 in vec2 ciTexCoord0;
@@ -14,7 +15,7 @@ void main()
 {
 	vDepth				= texture( uDepthTex, ciTexCoord0 ).b;
     vVertex				= vec4( ciPosition );
-	vVertex.z			+= vDepth * 1000.0;
+	vVertex.z			= vDepth * uDepthMag;
     gl_PointSize        = uPointSize;
 	gl_Position			= ciModelViewProjection * vVertex;
 }

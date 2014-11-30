@@ -35,7 +35,10 @@ class PointCloudGl : public AppBasic {
 	
 	// PARAMS
 	params::InterfaceGlRef	mParams;
+    
+    // SHADER VARS
     float           mPointSize;
+    float           mDepthMag;
 	
 	// CAMERA
 	CameraPersp		mCam;
@@ -64,13 +67,16 @@ void PointCloudGl::prepareSettings( Settings* settings )
 void PointCloudGl::setup()
 {	
 	// SETUP PARAMS
-	mParams = params::InterfaceGl::create( "KinectPointCloud", ivec2( 200, 180 ) );
+	mParams = params::InterfaceGl::create( "KinectPointCloud", ivec2( 250, 200 ) );
 	mParams->addParam( "Scene Rotation", &mSceneRotation, "opened=1" );
 	mParams->addParam( "Cam Distance", &mCameraDistance, "min=100.0 max=5000.0 step=100.0 keyIncr=s keyDecr=w" );
 	mParams->addParam( "Kinect Tilt", &mKinectTilt, "min=-31 max=31 keyIncr=T keyDecr=t" );
     mParams->addParam( "Point Size", &mPointSize, "min=1.0 max=20.0 keyIncr=P keyDecr=p step=0.5" );
+    mParams->addParam( "Depth Magnitude", &mDepthMag, "min=0.0 max=5000.0 step=1.0" );
 	
+    // SETUP SHADER VARS
     mPointSize = 1.f;
+    mDepthMag = 1000.f;
     
 	// SETUP CAMERA
 	mCameraDistance = 1000.0f;
@@ -151,6 +157,7 @@ void PointCloudGl::draw()
 		mDepthTexture->bind( 0 );
         mShader->uniform( "uDepthTex", 0 );
         mShader->uniform( "uPointSize", mPointSize );
+        mShader->uniform( "uDepthMag", mDepthMag );
         mParticleBatch->draw();
     }
 
